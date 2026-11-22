@@ -160,6 +160,47 @@
 加用例("SQL DELETE WHERE 索引", 函数(库件, 库)：库件.执行(库, "DELETE FROM 价 WHERE 值 > 10"))
 加用例("SQL DELETE WHERE 后条数", 函数(库件, 库)：库件.条数(库, "价"))
 
+# ---- LIKE/IN 走索引（P12）：加速只是候选超集，结果必须与全表扫逐字一致 ----
+加用例("SQL P12 建表", 函数(库件, 库)：库件.执行(库, "CREATE TABLE 词 (词 TEXT, 数 REAL)"))
+加用例("SQL P12 建索引", 函数(库件, 库)：库件.建索引(库, "词", ["词"]))
+加用例("SQL P12 插入", 函数(库件, 库)：库件.执行(库, "INSERT INTO 词 (词, 数) VALUES ('Alpha', 1), ('alpha', 2), ('ALPHA', 3), ('Alaska', 4), ('贝塔', 5)"))
+加用例("SQL P12 插入空词", 函数(库件, 库)：库件.执行(库, "INSERT INTO 词 (数) VALUES (9)"))
+加用例("SQL LIKE 前缀大写", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE 'AL%' ORDER BY 数")])
+加用例("SQL LIKE 前缀小写", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE 'al%' ORDER BY 数")])
+加用例("SQL LIKE 无通配", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE 'Alpha' ORDER BY 数")])
+加用例("SQL LIKE 中部通配", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE '%a%' ORDER BY 数")])
+加用例("SQL LIKE 前导下划线", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE '_lpha' ORDER BY 数")])
+加用例("SQL NOT LIKE", 函数(库件, 库)：长度(库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 NOT LIKE 'AL%'")))
+加用例("SQL LIKE 空值不命中", 函数(库件, 库)：长度(库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE '%'")))
+加用例("SQL LIKE 参数", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE ?", ["贝%"])])
+加用例("SQL LIKE AND 等值", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE 'A%' AND 数 > 1 ORDER BY 数")])
+加用例("SQL IN 有索引", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 IN ('Alpha', '贝塔', '不存在') ORDER BY 数")])
+加用例("SQL IN 数字", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 数 IN (1, 2) ORDER BY 数")])
+加用例("SQL IN 小数整混", 函数(库件, 库)：长度(库件.执行查询(库, "SELECT 词 FROM 词 WHERE 数 IN (2.0, 5)")))
+加用例("SQL IN 参数", 函数(库件, 库)：[r["词"] 遍历 r 在 库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 IN (?, ?)", ["alpha", "Alaska"])])
+加用例("SQL NOT IN", 函数(库件, 库)：长度(库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 NOT IN ('Alpha', 'alpha', 'ALPHA')")))
+加用例("SQL IN 空值成员", 函数(库件, 库)：长度(库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 IN ('Alpha', NULL)")))
+加用例("SQL IN 左空值", 函数(库件, 库)：长度(库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 IN ('Alpha') AND 词 IS NOT NULL OR 数 = 9")))
+加用例("SQL LIKE 未命中", 函数(库件, 库)：库件.执行查询(库, "SELECT 词 FROM 词 WHERE 词 LIKE '查无%'"))
+
+# :memory: 与空路径内存库（内置同款：按路径文本共享句柄）
+函数 内存库用例(库件, 库)：
+    令 甲 = 库件.打开(":memory:")
+    库件.建表(甲, "记", ["x"])
+    库件.插入(甲, "记", {"x": 1})
+    令 乙 = 库件.打开(":memory:")
+    令 n = 库件.条数(乙, "记")
+    库件.关闭(甲)
+    令 再开 = 库件.打开(":memory:")
+    令 n2 = -1
+    尝试：
+        n2 = 库件.条数(再开, "记")
+    捕获 异常 为 e：
+        n2 = "无表"
+    库件.关闭(再开)
+    返回 [n, n2]
+加用例("内存库 共享与关闭重置", 内存库用例)
+
 # 孤儿日志（M212 语义）：关闭 → 只删快照 → 重开应为空库（两边引擎一致）
 函数 孤儿用例(库件, 库)：
     库件.关闭(库)

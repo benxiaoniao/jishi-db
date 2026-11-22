@@ -337,6 +337,37 @@
 检查("SQL UPDATE WHERE 走索引", 数据库.执行(库S, "UPDATE 账 SET 备注 = '已' WHERE 额 = 1.5"), 1)
 检查("SQL UPDATE WHERE 后查", 数据库.查询(库S, "账", {"名": "批乙"})[0]["备注"], "已")
 
+# ---- LIKE/IN 走索引 + HAVING + 元组排序（0.4.0 增强项）----
+数据库.建索引(库S, "账", ["名"])
+检查("SQL LIKE 前缀走索引", [r["名"] 遍历 r 在 数据库.执行查询(库S, "SELECT 名 FROM 账 WHERE 名 LIKE '批甲%'")], ["批甲"])
+检查("SQL LIKE 无索引列同结果", [r["名"] 遍历 r 在 数据库.执行查询(库S, "SELECT 名 FROM 账 WHERE 备注 LIKE '已'")], ["批乙"])
+检查("SQL IN 走索引", [r["名"] 遍历 r 在 数据库.执行查询(库S, "SELECT 名 FROM 账 WHERE 名 IN ('批乙', '没这人')")], ["批乙"])
+令 库H = 数据库.打开(":memory:")
+数据库.建表(库H, "卖", ["区", "额"])
+数据库.批量插入(库H, "卖", [{"区": "东", "额": 10}, {"区": "东", "额": 30}, {"区": "东", "额": 20}, {"区": "西", "额": 5}, {"区": "西", "额": 7}])
+检查("HAVING 组数过滤", [r["区"] 遍历 r 在 数据库.执行查询(库H, "SELECT 区, COUNT(*) AS n FROM 卖 GROUP BY 区 HAVING COUNT(*) > 2")], ["东"])
+检查("HAVING 聚合不在SELECT", [r["区"] 遍历 r 在 数据库.执行查询(库H, "SELECT 区 FROM 卖 GROUP BY 区 HAVING SUM(额) > 15")], ["东"])
+检查("HAVING 分组列条件", [r["区"] 遍历 r 在 数据库.执行查询(库H, "SELECT 区 FROM 卖 GROUP BY 区 HAVING 区 = '西'")], ["西"])
+检查("HAVING AND 组合", 长度(数据库.执行查询(库H, "SELECT 区 FROM 卖 GROUP BY 区 HAVING COUNT(*) > 2 AND SUM(额) < 15")), 0)
+检查("HAVING 无分组", 数据库.执行查询(库H, "SELECT COUNT(*) AS n FROM 卖 HAVING COUNT(*) > 3"), [{"n": 5}])
+检查("HAVING 无分组不满足", 数据库.执行查询(库H, "SELECT COUNT(*) AS n FROM 卖 HAVING COUNT(*) > 99"), [])
+检查("HAVING ORDER BY", [r["区"] 遍历 r 在 数据库.执行查询(库H, "SELECT 区, SUM(额) AS 总 FROM 卖 GROUP BY 区 HAVING SUM(额) > 0 ORDER BY 总 DESC")], ["东", "西"])
+检查("HAVING 空表", 数据库.执行查询(库H, "SELECT 区, COUNT(*) AS n FROM 卖 WHERE 额 > 99 GROUP BY 区 HAVING COUNT(*) > 0"), [])
+检查抛错("HAVING 非分组列", 函数()：数据库.执行查询(库H, "SELECT 区 FROM 卖 GROUP BY 区 HAVING 额 > 1"),
+          "运行期错误", "数据库操作失败：HAVING 里的「额」要先 GROUP BY（聚合函数或分组列才能出现在 HAVING 里）")
+检查("内存库 条数可查", 数据库.条数(库H, "卖"), 5)
+数据库.关闭(库H)
+检查抛错("内存库 关闭后失效", 函数()：数据库.条数(库H, "卖"),
+          "值错误", "这个库还没打开：「:memory:」（先用 令 库 = 数据库.打开(\"路径\") 打开，再把「库」传给后面的函数）")
+令 库T = 数据库.打开(路径.连接(目录, "t元组.db"))
+数据库.建表(库T, "测", ["a", "b"])
+数据库.批量插入(库T, "测", [
+    {"a": 2, "b": 1.5}, {"a": 1, "b": 2.0}, {"a": 2, "b": 0.5},
+    {"a": 1, "b": 1.0}, {"a": 2, "b": 1.5}])
+检查("元组排序 两键升序", [r["id"] 遍历 r 在 数据库.查询(库T, "测", 空, ["a", "b"])], [4, 2, 3, 1, 5])
+检查("元组排序 SQL 同序", [r["id"] 遍历 r 在 数据库.执行查询(库T, "SELECT id FROM 测 ORDER BY a, b")], [4, 2, 3, 1, 5])
+数据库.关闭(库T)
+
 # ---- 迁移（P4） ----
 令 迁目 = 路径.连接(目录, "迁移样")
 文件.创建目录(迁目)
