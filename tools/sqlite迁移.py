@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # SQLite 源读取腿：由 tools/迁移.jsh 经 系统.执行详细 调起（0.3.5 内置模块不再有 rusqlite）
-# 用法：python tools/sqlite迁移.py     （源路径从环境变量 JSDB_MIGRATE_SRC 读）
+# 用法：python tools/sqlite迁移.py <SQLite库路径>（argv 1 参；兼容旧环境变量 JSDB_MIGRATE_SRC）
 # 输出：一个 JSON 文件路径（UTF-8），内容 {"库": [{"表","字段们","行们","有rowid"}, ...]}
 #   行们 = [rowid 或 null, 值…]（rowid 升序）；bytes → {"$字节b64": ...}；NULL → null
 import base64
@@ -53,9 +53,10 @@ def 读库(路径):
 
 
 def 主():
-    源 = os.environ.get("JSDB_MIGRATE_SRC", "")
+    # 语言 0.3.7 起 jish 侧用 argv 列表形态传路径；环境变量仅作旧版兼容回退
+    源 = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("JSDB_MIGRATE_SRC", "")
     if not 源:
-        print("缺环境变量 JSDB_MIGRATE_SRC（SQLite 库路径）", file=sys.stderr)
+        print("缺 SQLite 库路径（argv 1 或环境变量 JSDB_MIGRATE_SRC）", file=sys.stderr)
         return 1
     if not os.path.isfile(源):
         print("SQLite 库不存在: %s" % 源, file=sys.stderr)
